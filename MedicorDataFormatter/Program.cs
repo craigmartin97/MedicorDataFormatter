@@ -1,8 +1,8 @@
 ﻿using MedicorDataFormatter.Excel;
-using OfficeOpenXml;
 using System;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
-using System.Linq;
 
 namespace MedicorDataFormatter
 {
@@ -10,10 +10,20 @@ namespace MedicorDataFormatter
     {
         public static void Main(string[] args)
         {
-            ExcelReader excelReader = new ExcelReader(@"C:\Users\cmart\OneDrive\Desktop\MedicorDataFormatter\Dataset.xlsx", "Data");
-            foreach(var v in excelReader.ReadExcelWorksheet())
+            try
             {
-                Console.WriteLine(v);
+                ExcelFormatter excelReader = new ExcelFormatter(@"E:\Medicor\MedicorDataFormatter\Dataset.xlsx", "Data");
+                excelReader.FormatExcelHealthFile();
+            }
+            catch (FileNotFoundException ex)
+            {
+                Debug.WriteLine("The file or worksheet could not be found!!");
+                Console.WriteLine(ex.Message);
+            }
+            catch (ArgumentNullException ex)
+            {
+                Debug.WriteLine("The file path or workbook name are invalid, possibly null or blank");
+                Console.WriteLine(ex.Message);
             }
         }
     }
