@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "MedicorDataFormatter": {
+      "commandName": "Project",
+      "commandLineArgs": "-root D"
+    }
+  }
+}

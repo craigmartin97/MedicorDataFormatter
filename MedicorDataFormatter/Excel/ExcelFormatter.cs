@@ -1,11 +1,7 @@
 ﻿using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -18,7 +14,14 @@ namespace MedicorDataFormatter.Excel
     public class ExcelFormatter
     {
         #region Fields
+        /// <summary>
+        /// The sheet to engage with
+        /// </summary>
         private readonly ExcelWorksheet worksheet;
+
+        /// <summary>
+        /// The package, excel workbook, to work with
+        /// </summary>
         private readonly ExcelPackage package;
         #endregion
 
@@ -110,7 +113,7 @@ namespace MedicorDataFormatter.Excel
                                         if (findNext >= temp)
                                         {
                                             worksheet.Cells[row, col].Value = temp;
-                                            ApplyRedBorderStyle(row, col);
+                                            ApplyRedBorderStyle(row, col, ExcelBorderStyle.Thick, Color.Red);
                                         }
                                     }
                                 }
@@ -118,7 +121,7 @@ namespace MedicorDataFormatter.Excel
                                 {
                                     do
                                     {
-                                        isEnd = cols == nextCol;
+                                        isEnd = cols == nextCol; // true
                                         nextCol++;
 
                                         object next = worksheet.Cells[row, nextCol].Value;
@@ -132,7 +135,7 @@ namespace MedicorDataFormatter.Excel
 
                                     if (findNext != null && findNext.HasValue)
                                     {
-                                        if (findNext.Value.Hour <= 9) // if this is also less than 9, then it must be a morning (AM)
+                                        if (findNext.Value.Hour <= 9) // if this is also less than or equal to 9, then it must be a morning (AM)
                                             continue;
 
                                         // add 12 hours to make 24 hr
@@ -140,12 +143,35 @@ namespace MedicorDataFormatter.Excel
                                         if (temp <= findNext)
                                         {
                                             worksheet.Cells[row, col].Value = temp;
-                                            ApplyRedBorderStyle(row, col);
+                                            ApplyRedBorderStyle(row, col, ExcelBorderStyle.Thick, Color.Red);
                                         }
                                     }
                                 }
                             }
+
+                            if (col > 1) // middle and last cols only
+                            {
+                                object current = worksheet.Cells[row, col].Text;
+                                DateTime.TryParse(current.ToString() ?? "", out DateTime currentCell);
+
+                                object prevContent = worksheet.Cells[row, col - 1].Value;
+                                if (prevContent != null)
+                                {
+                                    bool isPrevDouble = double.TryParse(prevContent.ToString(), out double prevContentAsDouble);
+                                    if (isPrevDouble)
+                                    {
+                                        DateTime prevCol = DateTime.FromOADate(prevContentAsDouble);
+                                        if (currentCell < prevCol)
+                                        {
+                                            ApplyCellFill(row, col, Color.Green);
+                                        }
+                                    }
+
+                                }
+                            }
                         }
+
+
                     }
                 }
             }
@@ -177,20 +203,35 @@ namespace MedicorDataFormatter.Excel
 
         #region Apply Stylings
         /// <summary>
-        /// Apply a thick red border to a specified cell on the worksheet
+        /// Apply a border to a cell with a color.
         /// </summary>
         /// <param name="row">The row the cell is on</param>
         /// <param name="col">The column the cell is on</param>
-        public void ApplyRedBorderStyle(int row, int col)
+        /// <param name="borderStyle">The style of border to add around the edge</param>
+        /// <param name="color">The color of the border around the edge</param>
+        private void ApplyRedBorderStyle(int row, int col, ExcelBorderStyle borderStyle, Color color)
         {
-            worksheet.Cells[row, col].Style.Border.Right.Style = ExcelBorderStyle.Thick;
-            worksheet.Cells[row, col].Style.Border.Left.Style = ExcelBorderStyle.Thick;
-            worksheet.Cells[row, col].Style.Border.Top.Style = ExcelBorderStyle.Thick;
-            worksheet.Cells[row, col].Style.Border.Bottom.Style = ExcelBorderStyle.Thick;
-            worksheet.Cells[row, col].Style.Border.Right.Color.SetColor(Color.Red);
-            worksheet.Cells[row, col].Style.Border.Left.Color.SetColor(Color.Red);
-            worksheet.Cells[row, col].Style.Border.Top.Color.SetColor(Color.Red);
-            worksheet.Cells[row, col].Style.Border.Bottom.Color.SetColor(Color.Red);
+            worksheet.Cells[row, col].Style.Border.Right.Style = borderStyle;
+            worksheet.Cells[row, col].Style.Border.Left.Style = borderStyle;
+            worksheet.Cells[row, col].Style.Border.Top.Style = borderStyle;
+            worksheet.Cells[row, col].Style.Border.Bottom.Style = borderStyle;
+            worksheet.Cells[row, col].Style.Border.Right.Color.SetColor(color);
+            worksheet.Cells[row, col].Style.Border.Left.Color.SetColor(color);
+            worksheet.Cells[row, col].Style.Border.Top.Color.SetColor(color);
+            worksheet.Cells[row, col].Style.Border.Bottom.Color.SetColor(color);
+        }
+
+        /// <summary>
+        /// For a specified cell given by the row and column.
+        /// Change the background color with a solid fill.
+        /// </summary>
+        /// <param name="row"></param>
+        /// <param name="col"></param>
+        /// <param name="color"></param>
+        private void ApplyCellFill(int row, int col, Color color)
+        {
+            worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(color);
         }
         #endregion
     }

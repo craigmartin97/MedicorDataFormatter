@@ -10,7 +10,7 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy &quot;E:\Medicor\MedicorDataFormatter\OriginalDataset\Dataset.xlsx&quot; &quot;E:\Medicor\MedicorDataFormatter\&quot; /Y" />
+    <Exec Command="xcopy &quot;D:\Medicor\MedicorDataFormatter\OriginalDataset\Dataset.xlsx&quot; &quot;D:\Medicor\MedicorDataFormatter\&quot; /Y" />
   </Target>
 
 </Project>
