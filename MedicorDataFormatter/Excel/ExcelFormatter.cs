@@ -65,26 +65,21 @@ namespace MedicorDataFormatter.Excel
                 for (int row = 1; row <= rows; row++) // each row
                 {
                     // get the value from the cell
-                    object content = worksheet.Cells[row, col].Value;
+                    string content = GetTextFromCell(row, col);
 
-                    if (content == null) // the cell has nothing in, so add the phrase needed
-                    {
-                        string insertValue = GetNullReferenceValue(col);
-                        worksheet.Cells[row, col].Value = insertValue;
-                    }
+                    if (string.IsNullOrWhiteSpace(content)) // the cell has nothing in, so add the phrase needed
+                        InsertValueIntoNullCell(row, col);
                     else
                     {
-                        //check that the current data is a double, have to with EPPlus library as datetime cell returns double
-                        bool isDouble = double.TryParse(content.ToString(), out double numDateTime);
+                        // grab the text from the cell and try parse as DT
+                        bool isDateTime = DateTime.TryParse(content, out DateTime currentCellDateTime);
 
-                        if (isDouble)
+                        if (isDateTime)
                         {
-                            DateTime currentCellDateTime = DateTime.FromOADate(numDateTime);
-
                             if (currentCellDateTime.Hour <= 9) // suspect 12 hour format carry on.
                             {
                                 DateTime? findNext = null;
-                                int nextCol = col; // nextCol, as in the prev or next col to the current
+                                int nextCol = col; // nextCol, as in the prev or next col to the current col
                                 bool isEnd;
 
                                 if (cols == col) // last col
@@ -94,7 +89,7 @@ namespace MedicorDataFormatter.Excel
                                         isEnd = worksheet.Dimension.Start.Column == nextCol;
                                         nextCol--;
 
-                                        object prev = worksheet.Cells[row, nextCol].Value;
+                                        object prev = GetValueFromCell(row, nextCol);
                                         if (prev == null)
                                             continue;
 
@@ -124,7 +119,7 @@ namespace MedicorDataFormatter.Excel
                                         isEnd = cols == nextCol; // true
                                         nextCol++;
 
-                                        object next = worksheet.Cells[row, nextCol].Value;
+                                        object next = GetValueFromCell(row, nextCol); ;
                                         if (next == null)
                                             continue;
 
@@ -144,6 +139,26 @@ namespace MedicorDataFormatter.Excel
                                         {
                                             worksheet.Cells[row, col].Value = temp;
                                             ApplyRedBorderStyle(row, col, ExcelBorderStyle.Thick, Color.Red);
+
+                                            /**
+                                             * start at the current column and loop backwards columns ensure, no others are left
+                                             * as 12 hr formats
+                                             */
+                                            if (col > worksheet.Dimension.Start.Column)
+                                            {
+                                                for (int i = col - 1; i >= worksheet.Dimension.Start.Column; i--)
+                                                {
+                                                    if (DateTime.TryParse(worksheet.Cells[row, i].Text, out DateTime prevDateTime))
+                                                    {
+                                                        DateTime tempPrevDateTime = prevDateTime.AddHours(12);
+                                                        if (tempPrevDateTime <= temp) // added tweleve hours on and its still less than temp, so must now be 24hr format
+                                                        {
+                                                            worksheet.Cells[row, i].Value = tempPrevDateTime;
+                                                            ApplyRedBorderStyle(row, i, ExcelBorderStyle.Thick, Color.Blue);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -151,36 +166,36 @@ namespace MedicorDataFormatter.Excel
 
                             if (col > 1) // middle and last cols only
                             {
-                                object current = worksheet.Cells[row, col].Text;
-                                DateTime.TryParse(current.ToString() ?? "", out DateTime currentCell);
+                                bool currentDateTime = DateTime.TryParse(GetTextFromCell(row, col), out DateTime currentCell);
+                                bool prevDateTime = DateTime.TryParse(GetTextFromCell(row, col - 1), out DateTime prevContent);
 
-                                object prevContent = worksheet.Cells[row, col - 1].Value;
-                                if (prevContent != null)
+                                if (currentDateTime && prevDateTime)
                                 {
-                                    bool isPrevDouble = double.TryParse(prevContent.ToString(), out double prevContentAsDouble);
-                                    if (isPrevDouble)
+                                    if (currentCell < prevContent)
                                     {
-                                        DateTime prevCol = DateTime.FromOADate(prevContentAsDouble);
-                                        if (currentCell < prevCol)
-                                        {
-                                            ApplyCellFill(row, col, Color.Green);
-                                        }
+                                        ApplyCellFill(row, col, Color.Green);
                                     }
-
                                 }
                             }
                         }
-
-
                     }
                 }
             }
 
-            package.Save(); // save the excel file.
+            package.Save(); // save the excel file. Could throw InvalidOperationException if open in other program!!!
         }
         #endregion
 
         #region Null String Value
+        /// <summary>
+        /// Gets the null reference phrase based upon the column index
+        /// and inserts the value into the current null cell.
+        /// </summary>
+        /// <param name="row">The row of the null cell</param>
+        /// <param name="col">The column of the null cell</param>
+        private void InsertValueIntoNullCell(int row, int col) => worksheet.Cells[row, col].Value = GetNullReferenceValue(col);
+
+
         /// <summary>
         /// Returns a string reason based upon an integer
         /// </summary>
@@ -233,6 +248,24 @@ namespace MedicorDataFormatter.Excel
             worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
             worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(color);
         }
+        #endregion
+
+        #region Helpers
+        /// <summary>
+        /// Get the value from the workbook cell.
+        /// </summary>
+        /// <param name="row">The row of the cell</param>
+        /// <param name="col">The column of the cell</param>
+        /// <returns>Returns an object from the cell</returns>
+        private object GetValueFromCell(int row, int col) => worksheet.Cells[row, col].Value;
+
+        /// <summary>
+        /// Gets the text from the workbook cell
+        /// </summary>
+        /// <param name="row">The row of the cell</param>
+        /// <param name="col">The column of the cell</param>
+        /// <returns>Returns the cells value as a string</returns>
+        private string GetTextFromCell(int row, int col) => worksheet.Cells[row, col].Text;
         #endregion
     }
 }

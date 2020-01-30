@@ -9,6 +9,8 @@ namespace MedicorDataFormatter
     {
         public static void Main(string[] args)
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
             // get root argument, for device
             string root = null;
             for (int i = 0; i < args.Length; i++)
@@ -29,7 +31,7 @@ namespace MedicorDataFormatter
             // try and format the excel sheet
             try
             {
-                string path = string.Format(@"{0}:\Medicor\MedicorDataFormatter\Dataset.xlsx", root);
+                string path = string.Format(@"{0}Dataset.xlsx", root);
                 ExcelFormatter excelReader = new ExcelFormatter(path, "Data");
                 excelReader.FormatExcelHealthFile();
             }
@@ -43,6 +45,16 @@ namespace MedicorDataFormatter
                 Debug.WriteLine("The file path or workbook name are invalid, possibly null or blank");
                 Console.WriteLine(ex.Message);
             }
+            catch(InvalidOperationException ex)
+            {
+                Debug.WriteLine("Unable to save the workbook. Is it open in another program?");
+                Console.WriteLine(ex.Message);
+                Console.WriteLine("Unable to save the workbook. If open in other program, close it down");
+            }
+
+            watch.Stop();
+            Console.WriteLine("Execution Time: " + watch.ElapsedMilliseconds + "ms");
+
         }
     }
 }
