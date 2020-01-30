@@ -1,8 +1,10 @@
-﻿using OfficeOpenXml;
+﻿using MedicorDataFormatter.Interfaces;
+using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
 using System.Linq;
 
 namespace MedicorDataFormatter.Excel
@@ -17,58 +19,58 @@ namespace MedicorDataFormatter.Excel
         /// <summary>
         /// The sheet to engage with
         /// </summary>
-        private readonly ExcelWorksheet worksheet;
+        private readonly ExcelWorksheet _worksheet;
 
         /// <summary>
         /// The package, excel workbook, to work with
         /// </summary>
-        private readonly ExcelPackage package;
+        private readonly ExcelPackage _package;
+
+        /// <summary>
+        /// Styler to apply styling to excel sheet
+        /// </summary>
+        private readonly IExcelStyler _styler;
+
+        private readonly Dictionary<string, string> _nullCellDictionary;
+        private readonly Dictionary<string, string> _columnDateTimeDictionary;
         #endregion
 
         #region Constructors
+
         /// <summary>
-        /// Find the excel file and retrieve a workbook by the given name
+        /// Sets the excel styler and other injections needed
         /// </summary>
-        /// <param name="path">The path, where to find the excel file</param>
-        /// <param name="worksheetName">The name of the worksheet to use</param>
-        public ExcelFormatter(string path, string worksheetName)
+        /// <param name="excelData">The excel package and worksheet</param>
+        /// <param name="excelStyler"></param>
+        /// <param name="dictionaryManager"></param>
+        public ExcelFormatter(IExcelData excelData, IExcelStyler excelStyler, IDictionaryManager dictionaryManager)
         {
-            // check that the parameters supplied are valid. If either null or empty then error would occur stop here.
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentNullException(nameof(path), "The path supplied is blank. Enter a valid path");
+            _worksheet = excelData.Worksheet;
+            _package = excelData.Package;
+            _styler = excelStyler;
 
-            if (string.IsNullOrWhiteSpace(worksheetName))
-                throw new ArgumentNullException(nameof(worksheetName), "The sheet name supplied is blank. " +
-                    "Enter a valid sheet name");
-
-            package = new ExcelPackage(new FileInfo(path));
-
-            // find the worksheet by name
-            worksheet = package.Workbook.Worksheets
-                .FirstOrDefault(x => x.Name.Equals(worksheetName, StringComparison.CurrentCultureIgnoreCase));
-
-            // throw error if no worksheet has been found
-            if (worksheet == null)
-                throw new FileNotFoundException("Could not find the worksheet. Check the file path and worksheet " +
-                    "name are correct and are correct.");
+            _nullCellDictionary = dictionaryManager.GetDictionary("Columns");
+            _columnDateTimeDictionary = dictionaryManager.GetDictionary("BeforeColumns");
         }
         #endregion
 
         #region Read Excel Data
         public void FormatExcelHealthFile()
         {
-            int rows = worksheet.Dimension.Rows;
-            int cols = worksheet.Dimension.Columns;
+            int rows = _worksheet.Dimension.Rows;
+            int cols = _worksheet.Dimension.Columns;
 
-            for (int col = 1; col <= cols; col++) //each column
+            for (var col = 1; col <= cols; col++) //each column
             {
-                for (int row = 1; row <= rows; row++) // each row
+                for (var row = 1; row <= rows; row++) // each row
                 {
                     // get the value from the cell
                     string content = GetTextFromCell(row, col);
 
                     if (string.IsNullOrWhiteSpace(content)) // the cell has nothing in, so add the phrase needed
+                    {
                         InsertValueIntoNullCell(row, col);
+                    }
                     else
                     {
                         // grab the text from the cell and try parse as DT
@@ -86,7 +88,7 @@ namespace MedicorDataFormatter.Excel
                                 {
                                     do
                                     {
-                                        isEnd = worksheet.Dimension.Start.Column == nextCol;
+                                        isEnd = _worksheet.Dimension.Start.Column == nextCol;
                                         nextCol--;
 
                                         object prev = GetValueFromCell(row, nextCol);
@@ -98,7 +100,7 @@ namespace MedicorDataFormatter.Excel
                                     }
                                     while (findNext == null && !isEnd);
 
-                                    if (findNext != null && findNext.HasValue)
+                                    if (findNext.HasValue)
                                     {
                                         if (findNext.Value.Hour <= 9) // if this is also less than 9, then it must be a morning (AM)
                                             continue;
@@ -107,8 +109,8 @@ namespace MedicorDataFormatter.Excel
                                         DateTime temp = currentCellDateTime.AddHours(12);
                                         if (findNext >= temp)
                                         {
-                                            worksheet.Cells[row, col].Value = temp;
-                                            ApplyRedBorderStyle(row, col, ExcelBorderStyle.Thick, Color.Red);
+                                            _worksheet.Cells[row, col].Value = temp;
+                                            _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
                                         }
                                     }
                                 }
@@ -128,7 +130,7 @@ namespace MedicorDataFormatter.Excel
                                     }
                                     while (findNext == null && !isEnd);
 
-                                    if (findNext != null && findNext.HasValue)
+                                    if (findNext.HasValue)
                                     {
                                         if (findNext.Value.Hour <= 9) // if this is also less than or equal to 9, then it must be a morning (AM)
                                             continue;
@@ -137,24 +139,24 @@ namespace MedicorDataFormatter.Excel
                                         DateTime temp = currentCellDateTime.AddHours(12);
                                         if (temp <= findNext)
                                         {
-                                            worksheet.Cells[row, col].Value = temp;
-                                            ApplyRedBorderStyle(row, col, ExcelBorderStyle.Thick, Color.Red);
+                                            _worksheet.Cells[row, col].Value = temp;
+                                            _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
 
-                                            /**
+                                            /*
                                              * start at the current column and loop backwards columns ensure, no others are left
                                              * as 12 hr formats
                                              */
-                                            if (col > worksheet.Dimension.Start.Column)
+                                            if (col > _worksheet.Dimension.Start.Column)
                                             {
-                                                for (int i = col - 1; i >= worksheet.Dimension.Start.Column; i--)
+                                                for (int i = col - 1; i >= _worksheet.Dimension.Start.Column; i--)
                                                 {
-                                                    if (DateTime.TryParse(worksheet.Cells[row, i].Text, out DateTime prevDateTime))
+                                                    if (DateTime.TryParse(_worksheet.Cells[row, i].Text, out DateTime prevDateTime))
                                                     {
                                                         DateTime tempPrevDateTime = prevDateTime.AddHours(12);
                                                         if (tempPrevDateTime <= temp) // added tweleve hours on and its still less than temp, so must now be 24hr format
                                                         {
-                                                            worksheet.Cells[row, i].Value = tempPrevDateTime;
-                                                            ApplyRedBorderStyle(row, i, ExcelBorderStyle.Thick, Color.Blue);
+                                                            _worksheet.Cells[row, i].Value = tempPrevDateTime;
+                                                            _styler.ApplyBorderToCell(row, i, ExcelBorderStyle.Thick, Color.Blue);
                                                         }
                                                     }
                                                 }
@@ -164,89 +166,110 @@ namespace MedicorDataFormatter.Excel
                                 }
                             }
 
-                            if (col > 1) // middle and last cols only
-                            {
-                                bool currentDateTime = DateTime.TryParse(GetTextFromCell(row, col), out DateTime currentCell);
-                                bool prevDateTime = DateTime.TryParse(GetTextFromCell(row, col - 1), out DateTime prevContent);
 
-                                if (currentDateTime && prevDateTime)
-                                {
-                                    if (currentCell < prevContent)
-                                    {
-                                        ApplyCellFill(row, col, Color.Green);
-                                    }
-                                }
+                            CheckIfDateTimeIsBefore(row, col);
+                        }
+                    }
+                }
+            }
+
+            _package.Save(); // save the excel file. Could throw InvalidOperationException if open in other program!!!
+        }
+        #endregion
+
+        #region Null String Value
+
+        /// <summary>
+        /// Gets the null reference phrase based upon the column index
+        /// and inserts the value into the current null cell.
+        ///
+        /// Use the current columns first row as the header column.
+        /// Get the text and retrieve and get the value from the dictionary with the same key
+        /// </summary>
+        /// <param name="row">The row of the null cell</param>
+        /// <param name="col">The column of the null cell</param>
+        private void InsertValueIntoNullCell(int row, int col)
+        {
+            // get the current cols header. Use the first row and the current column index.
+            string colHeader = _worksheet.Cells[_worksheet.Dimension.Start.Row, col].Text;
+            if (!string.IsNullOrWhiteSpace(colHeader)) // actually got a header that is a string
+            {
+                if (GetValueFromDictionary(_nullCellDictionary, colHeader, out string inputValue))
+                {
+                    // got header value can insert into null cell.
+                    _worksheet.Cells[row, col].Value = inputValue;
+                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
+                }
+            }
+        }
+
+        #endregion
+
+        #region DateTime Before
+        /// <summary>
+        /// Check if the date and time of the cell is before another one.
+        /// If it is then highlight the cell.
+        /// </summary>
+        private void CheckIfDateTimeIsBefore(int row, int col)
+        {
+            int firstRow = _worksheet.Dimension.Start.Row;
+
+            // get the value from the current cell
+            if (GetDateTimeFromString(GetTextFromCell(row, col), out DateTime currentCell))
+            {
+                /*
+                 * get the current cells header. First row, current col
+                 * use the current headers value as key, and search inn the dictionary to get the comparision columns header title
+                 */
+                if (GetValueFromDictionary(_columnDateTimeDictionary, GetTextFromCell(firstRow, col), out string compareColHeader))
+                {
+                    int colIndexOfComparison = 0;
+                    // start at the first column
+                    for (int i = 1; i <= _worksheet.Dimension.Columns; i++)
+                    {
+                        // compare the cells text to the key's value.
+                        if (GetTextFromCell(firstRow, i).Equals(compareColHeader)) // found the cell that matches
+                        {
+                            colIndexOfComparison = i;
+                            break;
+                        }
+                    }
+
+                    if (colIndexOfComparison > 0) // got index value of the comparison column.
+                    {
+                        if (GetDateTimeFromString(GetTextFromCell(row, colIndexOfComparison), out DateTime compareCellDateTime))
+                        {
+                            if (currentCell < compareCellDateTime)
+                            {
+                                // the current cell is less than the compare cell's value. Apply formatting
+                                _styler.ApplyCellFill(row, col, Color.Green);
+                                _styler.ChangeFontColor(row, col, Color.White);
                             }
                         }
                     }
                 }
             }
 
-            package.Save(); // save the excel file. Could throw InvalidOperationException if open in other program!!!
-        }
-        #endregion
+            /*
+             * This is old code, 
+             * leave here for now. Even though in version control
+             */
 
-        #region Null String Value
-        /// <summary>
-        /// Gets the null reference phrase based upon the column index
-        /// and inserts the value into the current null cell.
-        /// </summary>
-        /// <param name="row">The row of the null cell</param>
-        /// <param name="col">The column of the null cell</param>
-        private void InsertValueIntoNullCell(int row, int col) => worksheet.Cells[row, col].Value = GetNullReferenceValue(col);
+            //if (col > 1) // middle and last cols only
+            //{
 
+            //    bool currentDateTime = DateTime.TryParse(GetTextFromCell(row, col), out DateTime currentCell);
+            //    bool prevDateTime = DateTime.TryParse(GetTextFromCell(row, col - 1), out DateTime prevContent);
 
-        /// <summary>
-        /// Returns a string reason based upon an integer
-        /// </summary>
-        /// <param name="col">The column number</param>
-        /// <returns>Returns a string based upon an int</returns>
-        private string GetNullReferenceValue(int col)
-        {
-            return col switch
-            {
-                1 => "Time into theatre",
-                2 => "Time of Anaesthetic Start",
-                3 => "Time into Theatre",
-                4 => "Time out of Theatre",
-                5 => "Time into Recovery",
-                6 => "Time Out of Recovery",
-                _ => "Error",
-            };
-        }
-        #endregion
-
-        #region Apply Stylings
-        /// <summary>
-        /// Apply a border to a cell with a color.
-        /// </summary>
-        /// <param name="row">The row the cell is on</param>
-        /// <param name="col">The column the cell is on</param>
-        /// <param name="borderStyle">The style of border to add around the edge</param>
-        /// <param name="color">The color of the border around the edge</param>
-        private void ApplyRedBorderStyle(int row, int col, ExcelBorderStyle borderStyle, Color color)
-        {
-            worksheet.Cells[row, col].Style.Border.Right.Style = borderStyle;
-            worksheet.Cells[row, col].Style.Border.Left.Style = borderStyle;
-            worksheet.Cells[row, col].Style.Border.Top.Style = borderStyle;
-            worksheet.Cells[row, col].Style.Border.Bottom.Style = borderStyle;
-            worksheet.Cells[row, col].Style.Border.Right.Color.SetColor(color);
-            worksheet.Cells[row, col].Style.Border.Left.Color.SetColor(color);
-            worksheet.Cells[row, col].Style.Border.Top.Color.SetColor(color);
-            worksheet.Cells[row, col].Style.Border.Bottom.Color.SetColor(color);
-        }
-
-        /// <summary>
-        /// For a specified cell given by the row and column.
-        /// Change the background color with a solid fill.
-        /// </summary>
-        /// <param name="row"></param>
-        /// <param name="col"></param>
-        /// <param name="color"></param>
-        private void ApplyCellFill(int row, int col, Color color)
-        {
-            worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(color);
+            //    if (currentDateTime && prevDateTime)
+            //    {
+            //        if (currentCell < prevContent)
+            //        {
+            //            _styler.ApplyCellFill(row, col, Color.Green);
+            //            _styler.ChangeFontColor(row, col, Color.White);
+            //        }
+            //    }
+            //}
         }
         #endregion
 
@@ -257,7 +280,7 @@ namespace MedicorDataFormatter.Excel
         /// <param name="row">The row of the cell</param>
         /// <param name="col">The column of the cell</param>
         /// <returns>Returns an object from the cell</returns>
-        private object GetValueFromCell(int row, int col) => worksheet.Cells[row, col].Value;
+        private object GetValueFromCell(int row, int col) => _worksheet.Cells[row, col].Value;
 
         /// <summary>
         /// Gets the text from the workbook cell
@@ -265,7 +288,27 @@ namespace MedicorDataFormatter.Excel
         /// <param name="row">The row of the cell</param>
         /// <param name="col">The column of the cell</param>
         /// <returns>Returns the cells value as a string</returns>
-        private string GetTextFromCell(int row, int col) => worksheet.Cells[row, col].Text;
+        private string GetTextFromCell(int row, int col) => _worksheet.Cells[row, col].Text;
+
+        /// <summary>
+        /// Get a value from a dictionary
+        /// </summary>
+        /// <param name="dictionary">Dictionary to get value from</param>
+        /// <param name="key">key value to search for</param>
+        /// <param name="retrievedVal">The value to be retrieved</param>
+        /// <returns></returns>
+        private bool GetValueFromDictionary(Dictionary<string, string> dictionary, string key, out string retrievedVal)
+            => dictionary.TryGetValue(key, out retrievedVal);
+
+        /// <summary>
+        /// Try and parse a string and output a datetime
+        /// </summary>
+        /// <param name="value">Value to try and parse</param>
+        /// <param name="dateTime">date to output in response</param>
+        /// <returns>Returns true if the operation was successful</returns>
+        private bool GetDateTimeFromString(string value, out DateTime dateTime)
+            => DateTime.TryParse(value, out dateTime);
+
         #endregion
     }
 }

@@ -1,4 +1,7 @@
 ﻿using MedicorDataFormatter.Excel;
+using MedicorDataFormatter.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -7,32 +10,53 @@ namespace MedicorDataFormatter
 {
     public class Program
     {
+        /// <summary>
+        /// The services provider holding the items for dp injection
+        /// </summary>
+        private static IServiceProvider _serviceProvider;
+
+        /// <summary>
+        /// The root spreadsheet path
+        /// </summary>
+        private static string _root;
+
+        private static IConfiguration _configuration;
+
         public static void Main(string[] args)
         {
-            var watch = System.Diagnostics.Stopwatch.StartNew();
+            // start timer watch for performance analysis
+            var watch = Stopwatch.StartNew();
 
-            // get root argument, for device
-            string root = null;
-            for (int i = 0; i < args.Length; i++)
+            SetupConfig();
+
+            for (var i = 0; i < args.Length; i++)
             {
                 if (args[i].Equals("-root"))
                 {
-                    root = args[i + 1];
+                    _root = args[i + 1];
                 }
             }
 
             // validate root found
-            if (string.IsNullOrWhiteSpace(root))
+            if (string.IsNullOrWhiteSpace(_root))
             {
                 Console.WriteLine("You must supply a root command line argument!");
                 return;
             }
 
+            FormatExcelFile(_root);
+
+            watch.Stop();
+            Console.WriteLine("Execution Time: " + watch.ElapsedMilliseconds + "ms");
+        }
+
+        #region Excel File
+        private static void FormatExcelFile(string root)
+        {
             // try and format the excel sheet
             try
             {
-                string path = string.Format(@"{0}Dataset.xlsx", root);
-                ExcelFormatter excelReader = new ExcelFormatter(path, "Data");
+                ExcelFormatter excelReader = _serviceProvider.GetService<ExcelFormatter>();
                 excelReader.FormatExcelHealthFile();
             }
             catch (FileNotFoundException ex)
@@ -45,16 +69,56 @@ namespace MedicorDataFormatter
                 Debug.WriteLine("The file path or workbook name are invalid, possibly null or blank");
                 Console.WriteLine(ex.Message);
             }
-            catch(InvalidOperationException ex)
+            catch (InvalidOperationException ex)
             {
                 Debug.WriteLine("Unable to save the workbook. Is it open in another program?");
                 Console.WriteLine(ex.Message);
                 Console.WriteLine("Unable to save the workbook. If open in other program, close it down");
             }
-
-            watch.Stop();
-            Console.WriteLine("Execution Time: " + watch.ElapsedMilliseconds + "ms");
-
         }
+        #endregion
+
+        #region Config
+        /// <summary>
+        /// Setup the configuration settings.
+        /// Add in the config file and run the dependency injection code.
+        /// </summary>
+        private static void SetupConfig()
+        {
+            /*
+             * add in the app settings file
+             *The columns headers on the dataset sheet.
+             * The key is the header text at the top. The value is the phrase
+             * to insert upon null / blankness in the cell
+             */
+            _configuration = new ConfigurationBuilder()
+                .SetBasePath(Environment.CurrentDirectory)
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+                .Build(); // build the config and store for usage
+
+            // configure the services to dependency inject
+            ServiceCollection serviceCollection = new ServiceCollection();
+            ConfigureServices(serviceCollection);
+            _serviceProvider = serviceCollection.BuildServiceProvider();
+        }
+
+        /// <summary>
+        /// Setup the configuration service for dependency injection
+        /// </summary>
+        /// <param name="serviceCollection">The collection storing the items for dp injection</param>
+        private static void ConfigureServices(IServiceCollection serviceCollection)
+        {
+            serviceCollection.AddSingleton(_configuration); // add config 
+
+            serviceCollection.AddSingleton<IDictionaryManager, DictionaryManager>(); // add dictionary manager to get items from dict
+
+            serviceCollection.AddSingleton<IExcelData, ExcelData>(x
+                => new ExcelData($@"{_root}{_configuration["FileName"]}.xlsx", _configuration["WorksheetName"]));
+
+            serviceCollection.AddSingleton<IExcelStyler, ExcelStyler>();
+
+            serviceCollection.AddSingleton<ExcelFormatter>();
+        }
+        #endregion  
     }
 }
