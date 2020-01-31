@@ -1,8 +1,7 @@
 {
   "profiles": {
     "MedicorDataFormatter": {
-      "commandName": "Project",
-      "commandLineArgs": "-root E:\\Medicor\\MedicorDataFormatter\\"
+      "commandName": "Project"
     }
   }
 }

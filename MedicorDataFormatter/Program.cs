@@ -15,11 +15,6 @@ namespace MedicorDataFormatter
         /// </summary>
         private static IServiceProvider _serviceProvider;
 
-        /// <summary>
-        /// The root spreadsheet path
-        /// </summary>
-        private static string _root;
-
         private static IConfiguration _configuration;
 
         public static void Main(string[] args)
@@ -29,34 +24,19 @@ namespace MedicorDataFormatter
 
             SetupConfig();
 
-            for (var i = 0; i < args.Length; i++)
-            {
-                if (args[i].Equals("-root"))
-                {
-                    _root = args[i + 1];
-                }
-            }
-
-            // validate root found
-            if (string.IsNullOrWhiteSpace(_root))
-            {
-                Console.WriteLine("You must supply a root command line argument!");
-                return;
-            }
-
-            FormatExcelFile(_root);
+            FormatExcelFile();
 
             watch.Stop();
             Console.WriteLine("Execution Time: " + watch.ElapsedMilliseconds + "ms");
         }
 
         #region Excel File
-        private static void FormatExcelFile(string root)
+        private static void FormatExcelFile()
         {
             // try and format the excel sheet
             try
             {
-                ExcelFormatter excelReader = _serviceProvider.GetService<ExcelFormatter>();
+                IExcelFormatter excelReader = _serviceProvider.GetService<IExcelFormatter>();
                 excelReader.FormatExcelHealthFile();
             }
             catch (FileNotFoundException ex)
@@ -87,7 +67,7 @@ namespace MedicorDataFormatter
         {
             /*
              * add in the app settings file
-             *The columns headers on the dataset sheet.
+             * The columns headers on the dataset sheet.
              * The key is the header text at the top. The value is the phrase
              * to insert upon null / blankness in the cell
              */
@@ -113,11 +93,12 @@ namespace MedicorDataFormatter
             serviceCollection.AddSingleton<IDictionaryManager, DictionaryManager>(); // add dictionary manager to get items from dict
 
             serviceCollection.AddSingleton<IExcelData, ExcelData>(x
-                => new ExcelData($@"{_root}{_configuration["FileName"]}.xlsx", _configuration["WorksheetName"]));
+                => new ExcelData($@"{_configuration["FileRoot"]}{_configuration["FileName"]}.xlsx",
+                    _configuration["WorksheetName"]));
 
             serviceCollection.AddSingleton<IExcelStyler, ExcelStyler>();
 
-            serviceCollection.AddSingleton<ExcelFormatter>();
+            serviceCollection.AddSingleton<IExcelFormatter, ExcelFormatter>();
         }
         #endregion  
     }

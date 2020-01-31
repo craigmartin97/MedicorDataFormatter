@@ -2,10 +2,8 @@
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 
 namespace MedicorDataFormatter.Excel
 {
@@ -13,7 +11,7 @@ namespace MedicorDataFormatter.Excel
     /// Excel reader accesses an excel file and opens it 
     /// The class is used to retrieve the data
     /// </summary>
-    public class ExcelFormatter
+    public class ExcelFormatter : IExcelFormatter
     {
         #region Fields
         /// <summary>
@@ -31,7 +29,17 @@ namespace MedicorDataFormatter.Excel
         /// </summary>
         private readonly IExcelStyler _styler;
 
+        /// <summary>
+        /// A dictionary to match the column header to a key
+        /// to output a null value to insert, when the cell is null.
+        /// </summary>
         private readonly Dictionary<string, string> _nullCellDictionary;
+
+        /// <summary>
+        /// A dictionary to hold keys and values.
+        /// Used to get the columns header and match with a key in the dictionary.
+        /// Outputs the other column to compare with
+        /// </summary>
         private readonly Dictionary<string, string> _columnDateTimeDictionary;
         #endregion
 
@@ -50,19 +58,29 @@ namespace MedicorDataFormatter.Excel
             _styler = excelStyler;
 
             _nullCellDictionary = dictionaryManager.GetDictionary("Columns");
+
+            if (_nullCellDictionary == null)
+                throw new NullReferenceException("The dictionary for columns is null. Ensure the configuration file is correct");
+
             _columnDateTimeDictionary = dictionaryManager.GetDictionary("BeforeColumns");
+
+            if (_columnDateTimeDictionary == null)
+                throw new NullReferenceException("The dictionary for before check columns is null. Ensure the configuration file is correct");
         }
         #endregion
 
         #region Read Excel Data
+        /// <summary>
+        /// Format the excel file.
+        /// Loops through each cell and gets the value from it.
+        /// If the cell is null then a phrase is inserted
+        /// If the cell has content the date is checked if it is 24hr format and a valid time based on other cols
+        /// </summary>
         public void FormatExcelHealthFile()
         {
-            int rows = _worksheet.Dimension.Rows;
-            int cols = _worksheet.Dimension.Columns;
-
-            for (var col = 1; col <= cols; col++) //each column
+            for (int row = _worksheet.Dimension.Start.Row; row <= _worksheet.Dimension.Rows; row++) // each row
             {
-                for (var row = 1; row <= rows; row++) // each row
+                for (int col = _worksheet.Dimension.Start.Column; col <= _worksheet.Dimension.Columns; col++) //each column
                 {
                     // get the value from the cell
                     string content = GetTextFromCell(row, col);
@@ -73,102 +91,9 @@ namespace MedicorDataFormatter.Excel
                     }
                     else
                     {
-                        // grab the text from the cell and try parse as DT
-                        bool isDateTime = DateTime.TryParse(content, out DateTime currentCellDateTime);
-
-                        if (isDateTime)
-                        {
-                            if (currentCellDateTime.Hour <= 9) // suspect 12 hour format carry on.
-                            {
-                                DateTime? findNext = null;
-                                int nextCol = col; // nextCol, as in the prev or next col to the current col
-                                bool isEnd;
-
-                                if (cols == col) // last col
-                                {
-                                    do
-                                    {
-                                        isEnd = _worksheet.Dimension.Start.Column == nextCol;
-                                        nextCol--;
-
-                                        object prev = GetValueFromCell(row, nextCol);
-                                        if (prev == null)
-                                            continue;
-
-                                        if (double.TryParse(prev.ToString(), out double nextDateAsNum))
-                                            findNext = DateTime.FromOADate(nextDateAsNum);
-                                    }
-                                    while (findNext == null && !isEnd);
-
-                                    if (findNext.HasValue)
-                                    {
-                                        if (findNext.Value.Hour <= 9) // if this is also less than 9, then it must be a morning (AM)
-                                            continue;
-
-                                        // add 12 hours to make 24 hr
-                                        DateTime temp = currentCellDateTime.AddHours(12);
-                                        if (findNext >= temp)
-                                        {
-                                            _worksheet.Cells[row, col].Value = temp;
-                                            _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
-                                        }
-                                    }
-                                }
-                                else // first or middle cols
-                                {
-                                    do
-                                    {
-                                        isEnd = cols == nextCol; // true
-                                        nextCol++;
-
-                                        object next = GetValueFromCell(row, nextCol); ;
-                                        if (next == null)
-                                            continue;
-
-                                        if (double.TryParse(next.ToString(), out double nextDateAsNum))
-                                            findNext = DateTime.FromOADate(nextDateAsNum);
-                                    }
-                                    while (findNext == null && !isEnd);
-
-                                    if (findNext.HasValue)
-                                    {
-                                        if (findNext.Value.Hour <= 9) // if this is also less than or equal to 9, then it must be a morning (AM)
-                                            continue;
-
-                                        // add 12 hours to make 24 hr
-                                        DateTime temp = currentCellDateTime.AddHours(12);
-                                        if (temp <= findNext)
-                                        {
-                                            _worksheet.Cells[row, col].Value = temp;
-                                            _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
-
-                                            /*
-                                             * start at the current column and loop backwards columns ensure, no others are left
-                                             * as 12 hr formats
-                                             */
-                                            if (col > _worksheet.Dimension.Start.Column)
-                                            {
-                                                for (int i = col - 1; i >= _worksheet.Dimension.Start.Column; i--)
-                                                {
-                                                    if (DateTime.TryParse(_worksheet.Cells[row, i].Text, out DateTime prevDateTime))
-                                                    {
-                                                        DateTime tempPrevDateTime = prevDateTime.AddHours(12);
-                                                        if (tempPrevDateTime <= temp) // added tweleve hours on and its still less than temp, so must now be 24hr format
-                                                        {
-                                                            _worksheet.Cells[row, i].Value = tempPrevDateTime;
-                                                            _styler.ApplyBorderToCell(row, i, ExcelBorderStyle.Thick, Color.Blue);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-
-                            CheckIfDateTimeIsBefore(row, col);
-                        }
+                        // the cell was not null so perform, 12hr to 24hr formatting and check if time is valid
+                        ChangeTimeFormat(row, col);
+                        CheckIfDateTimeIsBefore(row, col);
                     }
                 }
             }
@@ -197,7 +122,7 @@ namespace MedicorDataFormatter.Excel
                 if (GetValueFromDictionary(_nullCellDictionary, colHeader, out string inputValue))
                 {
                     // got header value can insert into null cell.
-                    _worksheet.Cells[row, col].Value = inputValue;
+                    InsertValueIntoCell(row, col, inputValue);
                     _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
                 }
             }
@@ -209,6 +134,11 @@ namespace MedicorDataFormatter.Excel
         /// <summary>
         /// Check if the date and time of the cell is before another one.
         /// If it is then highlight the cell.
+        ///
+        /// NOTE: Spec said for col "Surgery finish time" to check with
+        /// column "Time into theatre", unsure if this is correct as it doesnt follow the pattern
+        /// of the other columns. Should it be checking with "Surgery start time"? The col to the left.
+        /// Easy changeable, just go to appsettings.json and edit the corresponding value.
         /// </summary>
         private void CheckIfDateTimeIsBefore(int row, int col)
         {
@@ -239,7 +169,7 @@ namespace MedicorDataFormatter.Excel
                     {
                         if (GetDateTimeFromString(GetTextFromCell(row, colIndexOfComparison), out DateTime compareCellDateTime))
                         {
-                            if (currentCell < compareCellDateTime)
+                            if (currentCell < compareCellDateTime) // the prev cell is still less than the current
                             {
                                 // the current cell is less than the compare cell's value. Apply formatting
                                 _styler.ApplyCellFill(row, col, Color.Green);
@@ -249,39 +179,53 @@ namespace MedicorDataFormatter.Excel
                     }
                 }
             }
-
-            /*
-             * This is old code, 
-             * leave here for now. Even though in version control
-             */
-
-            //if (col > 1) // middle and last cols only
-            //{
-
-            //    bool currentDateTime = DateTime.TryParse(GetTextFromCell(row, col), out DateTime currentCell);
-            //    bool prevDateTime = DateTime.TryParse(GetTextFromCell(row, col - 1), out DateTime prevContent);
-
-            //    if (currentDateTime && prevDateTime)
-            //    {
-            //        if (currentCell < prevContent)
-            //        {
-            //            _styler.ApplyCellFill(row, col, Color.Green);
-            //            _styler.ChangeFontColor(row, col, Color.White);
-            //        }
-            //    }
-            //}
         }
         #endregion
 
-        #region Helpers
+        #region Change clock formatting
         /// <summary>
-        /// Get the value from the workbook cell.
+        /// Change the time from 12 hr format to 24hr format if appropriate
         /// </summary>
         /// <param name="row">The row of the cell</param>
         /// <param name="col">The column of the cell</param>
-        /// <returns>Returns an object from the cell</returns>
-        private object GetValueFromCell(int row, int col) => _worksheet.Cells[row, col].Value;
+        private void ChangeTimeFormat(int row, int col)
+        {
 
+            bool currentIsDate = GetDateTimeFromString(GetTextFromCell(row, col), out DateTime currentCellDateTime);
+            if (currentIsDate && currentCellDateTime.Hour <= 12) // 12 or less means it could be a AM time that needs converting
+            {
+                if (col == _worksheet.Dimension.End.Column) // in last col, there is no next col use prev
+                {
+                    // get datetime from prev cell
+                    if (!GetDateTimeFromString(GetTextFromCell(row, col - 1),
+                        out DateTime prevCellDateTime)) return;
+
+                    currentCellDateTime = currentCellDateTime.AddHours(12);
+
+                    if (prevCellDateTime < currentCellDateTime) return;
+
+                    InsertValueIntoCell(row, col, currentCellDateTime);
+                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
+                }
+                else // in first or middle cells
+                {
+                    // get datetime from next cell
+                    if (!GetDateTimeFromString(GetTextFromCell(row, col + 1),
+                        out DateTime nextCellDateTime)) return;
+
+                    // add twelve hours on to current
+                    currentCellDateTime = currentCellDateTime.AddHours(12);
+
+                    if (currentCellDateTime > nextCellDateTime) return; // can't possibly be correct. Don't edit on the sheet
+
+                    InsertValueIntoCell(row, col, currentCellDateTime);
+                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
+                }
+            }
+        }
+        #endregion 
+
+        #region Helpers
         /// <summary>
         /// Gets the text from the workbook cell
         /// </summary>
@@ -308,6 +252,15 @@ namespace MedicorDataFormatter.Excel
         /// <returns>Returns true if the operation was successful</returns>
         private bool GetDateTimeFromString(string value, out DateTime dateTime)
             => DateTime.TryParse(value, out dateTime);
+
+        /// <summary>
+        /// Insert a value into the cell
+        /// </summary>
+        /// <param name="row">Row of the cell</param>
+        /// <param name="col">Column of the cell</param>
+        /// <param name="value">Value to insert</param>
+        private void InsertValueIntoCell(int row, int col, object value)
+            => _worksheet.Cells[row, col].Value = value;
 
         #endregion
     }
