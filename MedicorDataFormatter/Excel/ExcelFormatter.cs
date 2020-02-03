@@ -82,19 +82,9 @@ namespace MedicorDataFormatter.Excel
             {
                 for (int col = _worksheet.Dimension.Start.Column; col <= _worksheet.Dimension.Columns; col++) //each column
                 {
-                    // get the value from the cell
-                    string content = GetTextFromCell(row, col);
-
-                    if (string.IsNullOrWhiteSpace(content)) // the cell has nothing in, so add the phrase needed
-                    {
-                        InsertValueIntoNullCell(row, col);
-                    }
-                    else
-                    {
-                        // the cell was not null so perform, 12hr to 24hr formatting and check if time is valid
-                        ChangeTimeFormat(row, col);
-                        CheckIfDateTimeIsBefore(row, col);
-                    }
+                    InsertValueIntoNullCell(row, col); // null value
+                    ChangeTimeFormat(row, col); // 12hr to 24hr
+                    CheckIfDateTimeIsBefore(row, col); // cell highlighting
                 }
             }
 
@@ -115,6 +105,9 @@ namespace MedicorDataFormatter.Excel
         /// <param name="col">The column of the null cell</param>
         private void InsertValueIntoNullCell(int row, int col)
         {
+            string currentCell = _worksheet.Cells[row, col].Text;
+            if(!string.IsNullOrWhiteSpace(currentCell)) return;
+
             // get the current cols header. Use the first row and the current column index.
             string colHeader = _worksheet.Cells[_worksheet.Dimension.Start.Row, col].Text;
             if (!string.IsNullOrWhiteSpace(colHeader)) // actually got a header that is a string

@@ -24,6 +24,11 @@ namespace MedicorDataFormatter
 
             SetupConfig();
 
+            /*
+             * Blue Border - The cell was null or blank
+             * Red Border - The datetime was 12hr format
+             * Green Background - The datetime was less than another columns specified cell.
+             */
             FormatExcelFile();
 
             watch.Stop();
