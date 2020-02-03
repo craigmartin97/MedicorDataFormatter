@@ -4,7 +4,6 @@ using OfficeOpenXml.Style;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 
 namespace MedicorDataFormatter.Excel
 {
