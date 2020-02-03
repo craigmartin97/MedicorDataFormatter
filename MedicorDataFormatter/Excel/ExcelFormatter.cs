@@ -4,6 +4,7 @@ using OfficeOpenXml.Style;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 
 namespace MedicorDataFormatter.Excel
 {
@@ -121,9 +122,12 @@ namespace MedicorDataFormatter.Excel
             {
                 if (GetValueFromDictionary(_nullCellDictionary, colHeader, out string inputValue))
                 {
-                    // got header value can insert into null cell.
-                    InsertValueIntoCell(row, col, inputValue);
-                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
+                    if (!string.IsNullOrWhiteSpace(inputValue)) // got value from dictionary
+                    {
+                        // got header value can insert into null cell.
+                        InsertValueIntoCell(row, col, inputValue);
+                        _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
+                    }
                 }
             }
         }
@@ -190,9 +194,8 @@ namespace MedicorDataFormatter.Excel
         /// <param name="col">The column of the cell</param>
         private void ChangeTimeFormat(int row, int col)
         {
-
             bool currentIsDate = GetDateTimeFromString(GetTextFromCell(row, col), out DateTime currentCellDateTime);
-            if (currentIsDate && currentCellDateTime.Hour <= 12) // 12 or less means it could be a AM time that needs converting
+            if (currentIsDate && currentCellDateTime.Hour <= 12) // 12 or less means it could be 12 to 24 hr conversion needed
             {
                 if (col == _worksheet.Dimension.End.Column) // in last col, there is no next col use prev
                 {
@@ -207,7 +210,7 @@ namespace MedicorDataFormatter.Excel
                     InsertValueIntoCell(row, col, currentCellDateTime);
                     _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
                 }
-                else // in first or middle cells
+                else if (col == _worksheet.Dimension.Start.Column) // first column
                 {
                     // get datetime from next cell
                     if (!GetDateTimeFromString(GetTextFromCell(row, col + 1),
@@ -220,6 +223,33 @@ namespace MedicorDataFormatter.Excel
 
                     InsertValueIntoCell(row, col, currentCellDateTime);
                     _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
+                }
+                else // middle cells
+                {
+                    // get datetime from prev cell
+                    if (!GetDateTimeFromString(GetTextFromCell(row, col - 1),
+                        out DateTime prevCellDateTime)) return;
+
+                    // get datetime from next cell
+                    if (!GetDateTimeFromString(GetTextFromCell(row, col + 1),
+                        out DateTime nextCellDateTime)) return;
+
+                    /*
+                     * Current cell is less than the previous one.
+                     * That will mean it could be a 12 hr time that needs converting.
+                     */
+                    if (currentCellDateTime < prevCellDateTime)
+                    {
+                        // add twelve hours on to current
+                        currentCellDateTime = currentCellDateTime.AddHours(12);
+
+                        // the date and time is now between the two dates it must be converted to 24hr clock
+                        if (currentCellDateTime >= prevCellDateTime && currentCellDateTime <= nextCellDateTime)
+                        {
+                            InsertValueIntoCell(row, col, currentCellDateTime);
+                            _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
+                        }
+                    }
                 }
             }
         }
