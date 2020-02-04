@@ -5,7 +5,9 @@ VisualStudioVersion = 16.0.29709.97
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MedicorDataFormatter", "MedicorDataFormatter\MedicorDataFormatter.csproj", "{F70CC260-6A4A-469B-9B8E-6A7B03F56F0B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MedicorDataFormatter.Tests", "MedicorDataFormatter.Tests\MedicorDataFormatter.Tests.csproj", "{7DB22BD5-AC72-4F21-A664-977D2E229358}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MedicorDataFormatter.Tests", "MedicorDataFormatter.Tests\MedicorDataFormatter.Tests.csproj", "{7DB22BD5-AC72-4F21-A664-977D2E229358}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MedicorDataFormatter.Models", "MedicorDataFormatter.Models\MedicorDataFormatter.Models.csproj", "{F4D9D720-CCDA-4464-BB8A-1873B8A7774B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{7DB22BD5-AC72-4F21-A664-977D2E229358}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7DB22BD5-AC72-4F21-A664-977D2E229358}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7DB22BD5-AC72-4F21-A664-977D2E229358}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F4D9D720-CCDA-4464-BB8A-1873B8A7774B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F4D9D720-CCDA-4464-BB8A-1873B8A7774B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F4D9D720-CCDA-4464-BB8A-1873B8A7774B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F4D9D720-CCDA-4464-BB8A-1873B8A7774B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

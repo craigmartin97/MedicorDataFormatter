@@ -1,0 +1,31 @@
+Medicor Presentation Notes:
+
+1) Briefly explain task -- Show spreadsheet. 
+2) Explain the solution application
+	-- C# Console Application .Net Core 2.2
+	-- Used EPPLUS Library for excel spreadsheet usage
+	
+3) Explain how you approached the problem
+	-- It needed to be flexiable enough to handle more columns and rows
+	-- Needed to be quick to handle potential lots of data
+	-- Segregated code into singular responsibility classes for clearer code
+	
+4) Explain the config file
+5) Walkthrough Program.cs and the dependency injection
+6) Walktrough the DictionaryManager.cs
+7) Walkthrough the ExcelData.cs
+8) Walkthrough the ExcelStyler.cs
+9) Walkthrough the ExcelFormatter.cs
+	-- Start at constructor 
+	-- Then explain FormatExcelHealthFile
+	-- InsertValueIntoNullCell method
+	-- ChangeTimeFormat
+	-- CheckIfDateTime
+	
+	
+Improvements -
+- Better handling of 12hr to 24hr formatting
+- More unit tests
+- Add log messages
+- Print out the changes
+- More user engagement, allow the user to confirm the changes and save the file if they wish 

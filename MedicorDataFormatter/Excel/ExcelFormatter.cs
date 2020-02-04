@@ -4,6 +4,8 @@ using OfficeOpenXml.Style;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using MedicorDataFormatter.Models;
+using Microsoft.Extensions.Logging;
 
 namespace MedicorDataFormatter.Excel
 {
@@ -41,6 +43,15 @@ namespace MedicorDataFormatter.Excel
         /// Outputs the other column to compare with
         /// </summary>
         private readonly Dictionary<int, int> _columnDateTimeDictionary;
+
+        /// <summary>
+        /// Logger for writing log messages to file
+        /// </summary>
+        private readonly ILogger<ExcelFormatter> _logger;
+        #endregion
+
+        #region Properties
+        public IList<Cell<DateTime?>> Changes { get; } = new List<Cell<DateTime?>>();
         #endregion
 
         #region Constructors
@@ -51,21 +62,31 @@ namespace MedicorDataFormatter.Excel
         /// <param name="excelData">The excel package and worksheet</param>
         /// <param name="excelStyler"></param>
         /// <param name="dictionaryManager"></param>
-        public ExcelFormatter(IExcelData excelData, IExcelStyler excelStyler, IDictionaryManager dictionaryManager)
+        public ExcelFormatter(IExcelData excelData, IExcelStyler excelStyler, IDictionaryManager dictionaryManager
+        , ILogger<ExcelFormatter> logger)
         {
             _worksheet = excelData.Worksheet;
             _package = excelData.Package;
             _styler = excelStyler;
+            _logger = logger;
 
             _nullCellDictionary = dictionaryManager.GetIntDictionary("Columns");
 
             if (_nullCellDictionary == null)
-                throw new NullReferenceException("The dictionary for columns is null. Ensure the configuration file is correct");
+            {
+                string error = "The dictionary for columns is null. Ensure the configuration file is correct";
+                _logger.LogError(error);
+                throw new NullReferenceException(error);
+            }
 
             _columnDateTimeDictionary = dictionaryManager.GetIntDictionary("BeforeColumns");
 
             if (_columnDateTimeDictionary == null)
-                throw new NullReferenceException("The dictionary for before check columns is null. Ensure the configuration file is correct");
+            {
+                string error = "The dictionary for before check columns is null. Ensure the configuration file is correct";
+                _logger.LogError(error);
+                throw new NullReferenceException(error);
+            }
         }
         #endregion
 
@@ -78,10 +99,13 @@ namespace MedicorDataFormatter.Excel
         /// </summary>
         public void FormatExcelHealthFile()
         {
+            _logger.LogDebug("Starting to format the excel data sheet.");
             // each row, start at the second row to skip the row headers.
             for (int row = _worksheet.Dimension.Start.Row + 1; row <= _worksheet.Dimension.Rows; row++)
             {
-                for (int col = _worksheet.Dimension.Start.Column; col <= _worksheet.Dimension.Columns; col++) //each column
+                for (int col = _worksheet.Dimension.Start.Column;
+                    col <= _worksheet.Dimension.Columns;
+                    col++) //each column
                 {
                     InsertValueIntoNullCell(row, col); // null value
                     ChangeTimeFormat(row, col); // 12hr to 24hr
@@ -112,10 +136,14 @@ namespace MedicorDataFormatter.Excel
             bool receivedCompareColIndex = GetColIndexFromDictionary(_nullCellDictionary, col, out int compareColIndex);
             if (!receivedCompareColIndex) return;
 
-            bool isDateTime = GetDateTimeFromString(GetTextFromCell(row, compareColIndex), out DateTime compareDateTime);
+            bool isDateTime =
+                GetDateTimeFromString(GetTextFromCell(row, compareColIndex), out DateTime compareDateTime);
             if (!isDateTime) return;
 
             // got header value can insert into null cell.
+            _logger.LogInformation("Null cell. ROW: " + row + " COL: " + col + " VALUE: " + compareDateTime);
+            Changes.Add(CreateCellObj(row, col, compareDateTime));
+
             InsertValueIntoCell(row, col, compareDateTime);
             _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
         }
@@ -149,6 +177,9 @@ namespace MedicorDataFormatter.Excel
 
             if (currentCell < compareColDateTime)
             {
+                _logger.LogInformation("Impossible Time. ROW: " + row + " COL: " + col);
+                Changes.Add(CreateCellObj(row, col, currentCell));
+
                 // the current cell is less than the compare cell's value. Apply formatting
                 _styler.ApplyCellFill(row, col, Color.Green);
                 _styler.ChangeFontColor(row, col, Color.White);
@@ -165,60 +196,69 @@ namespace MedicorDataFormatter.Excel
         private void ChangeTimeFormat(int row, int col)
         {
             bool currentIsDate = GetDateTimeFromString(GetTextFromCell(row, col), out DateTime currentCellDateTime);
-            if (currentIsDate && currentCellDateTime.Hour <= 12) // 12 or less means it could be 12 to 24 hr conversion needed
+            // not a date or is already 24 hr format
+            if (!currentIsDate || currentCellDateTime.Hour > 12) return;
+
+            if (col == _worksheet.Dimension.End.Column) // in last col, there is no next col use prev
             {
-                if (col == _worksheet.Dimension.End.Column) // in last col, there is no next col use prev
+                // get datetime from prev cell
+                if (!GetDateTimeFromString(GetTextFromCell(row, col - 1),
+                    out DateTime prevCellDateTime)) return;
+
+                currentCellDateTime = currentCellDateTime.AddHours(12);
+
+                if (prevCellDateTime < currentCellDateTime) return;
+
+                _logger.LogInformation("12HR Convert. ROW: " + row + " COL: " + col);
+                Changes.Add(CreateCellObj(row, col, currentCellDateTime));
+
+                InsertValueIntoCell(row, col, currentCellDateTime);
+                _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
+            }
+            else if (col == _worksheet.Dimension.Start.Column) // first column
+            {
+                // get datetime from next cell
+                if (!GetDateTimeFromString(GetTextFromCell(row, col + 1),
+                    out DateTime nextCellDateTime)) return;
+
+                // add twelve hours on to current
+                currentCellDateTime = currentCellDateTime.AddHours(12);
+
+                if (currentCellDateTime > nextCellDateTime) return; // can't possibly be correct. Don't edit on the sheet
+
+                _logger.LogInformation("12HR Convert. ROW: " + row + " COL: " + col);
+                Changes.Add(CreateCellObj(row, col, currentCellDateTime));
+
+                InsertValueIntoCell(row, col, currentCellDateTime);
+                _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
+            }
+            else // middle cells
+            {
+                // get datetime from prev cell
+                if (!GetDateTimeFromString(GetTextFromCell(row, col - 1),
+                    out DateTime prevCellDateTime)) return;
+
+                // get datetime from next cell
+                if (!GetDateTimeFromString(GetTextFromCell(row, col + 1),
+                    out DateTime nextCellDateTime)) return;
+
+                /*
+                 * Current cell is less than the previous one.
+                 * That will mean it could be a 12 hr time that needs converting.
+                 */
+                if (currentCellDateTime < prevCellDateTime)
                 {
-                    // get datetime from prev cell
-                    if (!GetDateTimeFromString(GetTextFromCell(row, col - 1),
-                        out DateTime prevCellDateTime)) return;
-
-                    currentCellDateTime = currentCellDateTime.AddHours(12);
-
-                    if (prevCellDateTime < currentCellDateTime) return;
-
-                    InsertValueIntoCell(row, col, currentCellDateTime);
-                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
-                }
-                else if (col == _worksheet.Dimension.Start.Column) // first column
-                {
-                    // get datetime from next cell
-                    if (!GetDateTimeFromString(GetTextFromCell(row, col + 1),
-                        out DateTime nextCellDateTime)) return;
-
                     // add twelve hours on to current
                     currentCellDateTime = currentCellDateTime.AddHours(12);
 
-                    if (currentCellDateTime > nextCellDateTime) return; // can't possibly be correct. Don't edit on the sheet
-
-                    InsertValueIntoCell(row, col, currentCellDateTime);
-                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
-                }
-                else // middle cells
-                {
-                    // get datetime from prev cell
-                    if (!GetDateTimeFromString(GetTextFromCell(row, col - 1),
-                        out DateTime prevCellDateTime)) return;
-
-                    // get datetime from next cell
-                    if (!GetDateTimeFromString(GetTextFromCell(row, col + 1),
-                        out DateTime nextCellDateTime)) return;
-
-                    /*
-                     * Current cell is less than the previous one.
-                     * That will mean it could be a 12 hr time that needs converting.
-                     */
-                    if (currentCellDateTime < prevCellDateTime)
+                    // the date and time is now between the two dates it must be converted to 24hr clock
+                    if (currentCellDateTime >= prevCellDateTime && currentCellDateTime <= nextCellDateTime)
                     {
-                        // add twelve hours on to current
-                        currentCellDateTime = currentCellDateTime.AddHours(12);
+                        _logger.LogInformation("12HR Convert. ROW: " + row + " COL: " + col);
+                        Changes.Add(CreateCellObj(row, col, currentCellDateTime));
 
-                        // the date and time is now between the two dates it must be converted to 24hr clock
-                        if (currentCellDateTime >= prevCellDateTime && currentCellDateTime <= nextCellDateTime)
-                        {
-                            InsertValueIntoCell(row, col, currentCellDateTime);
-                            _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
-                        }
+                        InsertValueIntoCell(row, col, currentCellDateTime);
+                        _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
                     }
                 }
             }
@@ -262,6 +302,16 @@ namespace MedicorDataFormatter.Excel
         /// <param name="value">Value to insert</param>
         private void InsertValueIntoCell(int row, int col, object value)
             => _worksheet.Cells[row, col].Value = value;
+
+        private Cell<DateTime?> CreateCellObj(int row, int col, DateTime? dateTime = null)
+        {
+            return new Cell<DateTime?>
+            {
+                Row = row,
+                Column = col,
+                Value = dateTime
+            };
+        }
 
         #endregion
     }

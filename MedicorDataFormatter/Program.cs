@@ -2,9 +2,14 @@
 using MedicorDataFormatter.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using NLog.Extensions.Logging;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
+using Microsoft.Extensions.Logging;
+using NLog;
+using OfficeOpenXml.FormulaParsing.Excel.Functions.Math;
 
 namespace MedicorDataFormatter
 {
@@ -43,6 +48,16 @@ namespace MedicorDataFormatter
             {
                 IExcelFormatter excelReader = _serviceProvider.GetService<IExcelFormatter>();
                 excelReader.FormatExcelHealthFile();
+
+                // print changes
+                foreach (var cell in excelReader.Changes)
+                {
+                    string message = "ROW:" + cell.Row + " COL:" + cell.Column;
+                    if (cell.Value.HasValue)
+                        message += " VALUE: " + cell.Value;
+
+                    Console.WriteLine(message);
+                }
             }
             catch (FileNotFoundException ex)
             {
@@ -84,6 +99,15 @@ namespace MedicorDataFormatter
             // configure the services to dependency inject
             ServiceCollection serviceCollection = new ServiceCollection();
             ConfigureServices(serviceCollection);
+
+            serviceCollection.AddLogging(loggingProvider =>
+            {
+                // configure Logging with NLog
+                loggingProvider.ClearProviders();
+                loggingProvider.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                loggingProvider.AddNLog(_configuration);
+            });
+
             _serviceProvider = serviceCollection.BuildServiceProvider();
         }
 
