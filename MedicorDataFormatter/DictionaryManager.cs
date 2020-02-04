@@ -19,15 +19,26 @@ namespace MedicorDataFormatter
         }
 
         /// <summary>
-        /// Returns a dictionary with a key string and string value.
-        /// The method requires a section to be specified to be able to get from the config.
+        /// Creates a dictionary with a key and value of ints
         /// </summary>
-        /// <param name="section">The section in which to get the values from</param>
-        /// <returns>Returns a dictionary of type string,stringn</returns>
-        public Dictionary<string, string> GetDictionary(string section)
+        /// <param name="section">Section to get from config file</param>
+        /// <returns>Returns a dictionary of key int and value of int</returns>
+        public Dictionary<int, int> GetIntDictionary(string section)
         {
             var columns = _configuration.GetSection(section).GetChildren();
-            return columns.ToDictionary(col => col.Key, col => col.Value);
+
+            Dictionary<int, int> dictionary = new Dictionary<int, int>();
+            foreach (var col in columns)
+            {
+                bool keyIsInt = int.TryParse(col.Key, out int key);
+                bool valueIsInt = int.TryParse(col.Value, out int value);
+
+                if (!keyIsInt || !valueIsInt) continue;
+
+                dictionary.Add(key, value);
+            }
+
+            return dictionary;
         }
     }
 }

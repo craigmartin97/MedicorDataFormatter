@@ -33,14 +33,14 @@ namespace MedicorDataFormatter.Excel
         /// A dictionary to match the column header to a key
         /// to output a null value to insert, when the cell is null.
         /// </summary>
-        private readonly Dictionary<string, string> _nullCellDictionary;
+        private readonly Dictionary<int, int> _nullCellDictionary;
 
         /// <summary>
         /// A dictionary to hold keys and values.
         /// Used to get the columns header and match with a key in the dictionary.
         /// Outputs the other column to compare with
         /// </summary>
-        private readonly Dictionary<string, string> _columnDateTimeDictionary;
+        private readonly Dictionary<int, int> _columnDateTimeDictionary;
         #endregion
 
         #region Constructors
@@ -57,12 +57,12 @@ namespace MedicorDataFormatter.Excel
             _package = excelData.Package;
             _styler = excelStyler;
 
-            _nullCellDictionary = dictionaryManager.GetDictionary("Columns");
+            _nullCellDictionary = dictionaryManager.GetIntDictionary("Columns");
 
             if (_nullCellDictionary == null)
                 throw new NullReferenceException("The dictionary for columns is null. Ensure the configuration file is correct");
 
-            _columnDateTimeDictionary = dictionaryManager.GetDictionary("BeforeColumns");
+            _columnDateTimeDictionary = dictionaryManager.GetIntDictionary("BeforeColumns");
 
             if (_columnDateTimeDictionary == null)
                 throw new NullReferenceException("The dictionary for before check columns is null. Ensure the configuration file is correct");
@@ -106,37 +106,18 @@ namespace MedicorDataFormatter.Excel
         /// <param name="col">The column of the null cell</param>
         private void InsertValueIntoNullCell(int row, int col)
         {
-            string currentCell = _worksheet.Cells[row, col].Text;
-            if (!string.IsNullOrWhiteSpace(currentCell)) return; // this cell has data in, so is not invalid
+            string currentCell = GetTextFromCell(row, col);
+            if (!string.IsNullOrWhiteSpace(currentCell)) return;
 
-            // get the current cols header. Use the first row and the current column index.
-            string colHeader = _worksheet.Cells[_worksheet.Dimension.Start.Row, col].Text;
-            if (string.IsNullOrWhiteSpace(colHeader)) return;
+            bool receivedCompareColIndex = GetColIndexFromDictionary(_nullCellDictionary, col, out int compareColIndex);
+            if (!receivedCompareColIndex) return;
 
-            if (GetValueFromDictionary(_nullCellDictionary, colHeader, out string compareColumnHeader))
-            {
-                if (string.IsNullOrWhiteSpace(compareColumnHeader)) return; // didnt get a compare col header
+            bool isDateTime = GetDateTimeFromString(GetTextFromCell(row, compareColIndex), out DateTime compareDateTime);
+            if (!isDateTime) return;
 
-                int colIndexOfComparison = 0;
-                // start at the first column
-                for (int header = _worksheet.Dimension.Start.Column; header <= _worksheet.Dimension.Columns; header++)
-                {
-                    // compare the cells text to the key's value.
-                    if (GetTextFromCell(_worksheet.Dimension.Start.Row, header).Equals(compareColumnHeader)) // found the cell that matches
-                    {
-                        colIndexOfComparison = header;
-                        break;
-                    }
-                }
-
-                if (colIndexOfComparison > 0
-                    && GetDateTimeFromString(GetTextFromCell(row, colIndexOfComparison), out DateTime inputValue))
-                {
-                    // got header value can insert into null cell.
-                    InsertValueIntoCell(row, col, inputValue);
-                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
-                }
-            }
+            // got header value can insert into null cell.
+            InsertValueIntoCell(row, col, compareDateTime);
+            _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
         }
 
         #endregion
@@ -153,42 +134,24 @@ namespace MedicorDataFormatter.Excel
         /// </summary>
         private void CheckIfDateTimeIsBefore(int row, int col)
         {
-            int firstRow = _worksheet.Dimension.Start.Row;
+            // get current cells value
+            bool isCurrentDateTime = GetDateTimeFromString(GetTextFromCell(row, col), out DateTime currentCell);
+            if (!isCurrentDateTime) return;
 
-            // get the value from the current cell
-            if (GetDateTimeFromString(GetTextFromCell(row, col), out DateTime currentCell))
+            // get the current columns comparisons index
+            bool isCompareColInt = GetColIndexFromDictionary(_columnDateTimeDictionary, col, out int compareColIndex);
+            if (!isCompareColInt) return;
+
+            // get the compare columns cell for the relevant row
+            bool isCompareColDateTime =
+                GetDateTimeFromString(GetTextFromCell(row, compareColIndex), out DateTime compareColDateTime);
+            if (!isCompareColDateTime) return;
+
+            if (currentCell < compareColDateTime)
             {
-                /*
-                 * get the current cells header. First row, current col
-                 * use the current headers value as key, and search inn the dictionary to get the comparision columns header title
-                 */
-                if (GetValueFromDictionary(_columnDateTimeDictionary, GetTextFromCell(firstRow, col), out string compareColHeader))
-                {
-                    int colIndexOfComparison = 0;
-                    // start at the first column
-                    for (int i = _worksheet.Dimension.Start.Column; i <= _worksheet.Dimension.Columns; i++)
-                    {
-                        // compare the cells text to the key's value.
-                        if (GetTextFromCell(firstRow, i).Equals(compareColHeader)) // found the cell that matches
-                        {
-                            colIndexOfComparison = i;
-                            break;
-                        }
-                    }
-
-                    if (colIndexOfComparison > 0) // got index value of the comparison column.
-                    {
-                        if (GetDateTimeFromString(GetTextFromCell(row, colIndexOfComparison), out DateTime compareCellDateTime))
-                        {
-                            if (currentCell < compareCellDateTime) // the prev cell is still less than the current
-                            {
-                                // the current cell is less than the compare cell's value. Apply formatting
-                                _styler.ApplyCellFill(row, col, Color.Green);
-                                _styler.ChangeFontColor(row, col, Color.White);
-                            }
-                        }
-                    }
-                }
+                // the current cell is less than the compare cell's value. Apply formatting
+                _styler.ApplyCellFill(row, col, Color.Green);
+                _styler.ChangeFontColor(row, col, Color.White);
             }
         }
         #endregion
@@ -269,17 +232,18 @@ namespace MedicorDataFormatter.Excel
         /// <param name="row">The row of the cell</param>
         /// <param name="col">The column of the cell</param>
         /// <returns>Returns the cells value as a string</returns>
-        private string GetTextFromCell(int row, int col) => _worksheet.Cells[row, col].Text;
+        private string GetTextFromCell(int row, int col)
+            => _worksheet.Cells[row, col].Text;
 
         /// <summary>
         /// Get a value from a dictionary
         /// </summary>
         /// <param name="dictionary">Dictionary to get value from</param>
         /// <param name="key">key value to search for</param>
-        /// <param name="retrievedVal">The value to be retrieved</param>
-        /// <returns></returns>
-        private bool GetValueFromDictionary(Dictionary<string, string> dictionary, string key, out string retrievedVal)
-            => dictionary.TryGetValue(key, out retrievedVal);
+        /// <param name="colValue">The column value</param>
+        /// <returns>Returns an integer returned from the dictionary</returns>
+        private bool GetColIndexFromDictionary(Dictionary<int, int> dictionary, int key, out int colValue)
+            => dictionary.TryGetValue(key, out colValue);
 
         /// <summary>
         /// Try and parse a string and output a datetime
