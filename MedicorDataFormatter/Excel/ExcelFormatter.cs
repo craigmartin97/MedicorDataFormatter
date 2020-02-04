@@ -78,7 +78,8 @@ namespace MedicorDataFormatter.Excel
         /// </summary>
         public void FormatExcelHealthFile()
         {
-            for (int row = _worksheet.Dimension.Start.Row; row <= _worksheet.Dimension.Rows; row++) // each row
+            // each row, start at the second row to skip the row headers.
+            for (int row = _worksheet.Dimension.Start.Row + 1; row <= _worksheet.Dimension.Rows; row++)
             {
                 for (int col = _worksheet.Dimension.Start.Column; col <= _worksheet.Dimension.Columns; col++) //each column
                 {
@@ -88,7 +89,7 @@ namespace MedicorDataFormatter.Excel
                 }
             }
 
-            _package.Save(); // save the excel file. Could throw InvalidOperationException if open in other program!!!
+            _package.Save(); // save the excel file. Could throw InvalidOperationException if excel sheet open in other program.
         }
         #endregion
 
@@ -106,20 +107,34 @@ namespace MedicorDataFormatter.Excel
         private void InsertValueIntoNullCell(int row, int col)
         {
             string currentCell = _worksheet.Cells[row, col].Text;
-            if(!string.IsNullOrWhiteSpace(currentCell)) return;
+            if (!string.IsNullOrWhiteSpace(currentCell)) return; // this cell has data in, so is not invalid
 
             // get the current cols header. Use the first row and the current column index.
             string colHeader = _worksheet.Cells[_worksheet.Dimension.Start.Row, col].Text;
-            if (!string.IsNullOrWhiteSpace(colHeader)) // actually got a header that is a string
+            if (string.IsNullOrWhiteSpace(colHeader)) return;
+
+            if (GetValueFromDictionary(_nullCellDictionary, colHeader, out string compareColumnHeader))
             {
-                if (GetValueFromDictionary(_nullCellDictionary, colHeader, out string inputValue))
+                if (string.IsNullOrWhiteSpace(compareColumnHeader)) return; // didnt get a compare col header
+
+                int colIndexOfComparison = 0;
+                // start at the first column
+                for (int header = _worksheet.Dimension.Start.Column; header <= _worksheet.Dimension.Columns; header++)
                 {
-                    if (!string.IsNullOrWhiteSpace(inputValue)) // got value from dictionary
+                    // compare the cells text to the key's value.
+                    if (GetTextFromCell(_worksheet.Dimension.Start.Row, header).Equals(compareColumnHeader)) // found the cell that matches
                     {
-                        // got header value can insert into null cell.
-                        InsertValueIntoCell(row, col, inputValue);
-                        _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
+                        colIndexOfComparison = header;
+                        break;
                     }
+                }
+
+                if (colIndexOfComparison > 0
+                    && GetDateTimeFromString(GetTextFromCell(row, colIndexOfComparison), out DateTime inputValue))
+                {
+                    // got header value can insert into null cell.
+                    InsertValueIntoCell(row, col, inputValue);
+                    _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
                 }
             }
         }
@@ -151,7 +166,7 @@ namespace MedicorDataFormatter.Excel
                 {
                     int colIndexOfComparison = 0;
                     // start at the first column
-                    for (int i = 1; i <= _worksheet.Dimension.Columns; i++)
+                    for (int i = _worksheet.Dimension.Start.Column; i <= _worksheet.Dimension.Columns; i++)
                     {
                         // compare the cells text to the key's value.
                         if (GetTextFromCell(firstRow, i).Equals(compareColHeader)) // found the cell that matches
