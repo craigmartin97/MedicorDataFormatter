@@ -1,11 +1,11 @@
 ﻿using MedicorDataFormatter.Interfaces;
+using MedicorDataFormatter.Models;
+using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using MedicorDataFormatter.Models;
-using Microsoft.Extensions.Logging;
 
 namespace MedicorDataFormatter.Excel
 {
@@ -51,17 +51,21 @@ namespace MedicorDataFormatter.Excel
         #endregion
 
         #region Properties
+        /// <summary>
+        /// Collection of cells of type datetimes.
+        /// The collection holds the cells information that have been changed.
+        /// </summary>
         public IList<Cell<DateTime?>> Changes { get; } = new List<Cell<DateTime?>>();
         #endregion
 
         #region Constructors
-
         /// <summary>
         /// Sets the excel styler and other injections needed
         /// </summary>
         /// <param name="excelData">The excel package and worksheet</param>
-        /// <param name="excelStyler"></param>
-        /// <param name="dictionaryManager"></param>
+        /// <param name="excelStyler">The excel class to add styling to cells</param>
+        /// <param name="dictionaryManager">Dictionary manager to get config dictionaries</param>
+        /// <param name="logger">Logger to record messages</param>
         public ExcelFormatter(IExcelData excelData, IExcelStyler excelStyler, IDictionaryManager dictionaryManager
         , ILogger<ExcelFormatter> logger)
         {
@@ -70,20 +74,20 @@ namespace MedicorDataFormatter.Excel
             _styler = excelStyler;
             _logger = logger;
 
-            _nullCellDictionary = dictionaryManager.GetIntDictionary("Columns");
-
+            // dictionary for null cells
+            _nullCellDictionary = dictionaryManager.GetIntDictionary("NullColumns");
             if (_nullCellDictionary == null)
             {
-                string error = "The dictionary for columns is null. Ensure the configuration file is correct";
+                const string error = "The dictionary for columns is null. Ensure the configuration file is correct";
                 _logger.LogError(error);
                 throw new NullReferenceException(error);
             }
 
-            _columnDateTimeDictionary = dictionaryManager.GetIntDictionary("BeforeColumns");
-
+            // dictionary for incorrect date times
+            _columnDateTimeDictionary = dictionaryManager.GetIntDictionary("IncorrectTimeColumns");
             if (_columnDateTimeDictionary == null)
             {
-                string error = "The dictionary for before check columns is null. Ensure the configuration file is correct";
+                const string error = "The dictionary for before check columns is null. Ensure the configuration file is correct";
                 _logger.LogError(error);
                 throw new NullReferenceException(error);
             }
@@ -100,12 +104,14 @@ namespace MedicorDataFormatter.Excel
         public void FormatExcelHealthFile()
         {
             _logger.LogDebug("Starting to format the excel data sheet.");
-            // each row, start at the second row to skip the row headers.
+
+            // each row, excluding the top row as it is the headers
             for (int row = _worksheet.Dimension.Start.Row + 1; row <= _worksheet.Dimension.Rows; row++)
             {
+                // each column
                 for (int col = _worksheet.Dimension.Start.Column;
                     col <= _worksheet.Dimension.Columns;
-                    col++) //each column
+                    col++)
                 {
                     InsertValueIntoNullCell(row, col); // null value
                     ChangeTimeFormat(row, col); // 12hr to 24hr
@@ -122,7 +128,6 @@ namespace MedicorDataFormatter.Excel
         /// <summary>
         /// Gets the null reference phrase based upon the column index
         /// and inserts the value into the current null cell.
-        ///
         /// Use the current columns first row as the header column.
         /// Get the text and retrieve and get the value from the dictionary with the same key
         /// </summary>
@@ -142,7 +147,9 @@ namespace MedicorDataFormatter.Excel
 
             // got header value can insert into null cell.
             _logger.LogInformation("Null cell. ROW: " + row + " COL: " + col + " VALUE: " + compareDateTime);
-            Changes.Add(CreateCellObj(row, col, compareDateTime));
+
+            Cell<DateTime?> cell = new Cell<DateTime?>(row, col, compareDateTime);
+            Changes.Add(cell);
 
             InsertValueIntoCell(row, col, compareDateTime);
             _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.DeepSkyBlue);
@@ -154,7 +161,6 @@ namespace MedicorDataFormatter.Excel
         /// <summary>
         /// Check if the date and time of the cell is before another one.
         /// If it is then highlight the cell.
-        ///
         /// NOTE: Spec said for col "Surgery finish time" to check with
         /// column "Time into theatre", unsure if this is correct as it doesnt follow the pattern
         /// of the other columns. Should it be checking with "Surgery start time"? The col to the left.
@@ -178,7 +184,8 @@ namespace MedicorDataFormatter.Excel
             if (currentCell < compareColDateTime)
             {
                 _logger.LogInformation("Impossible Time. ROW: " + row + " COL: " + col);
-                Changes.Add(CreateCellObj(row, col, currentCell));
+                Cell<DateTime?> cell = new Cell<DateTime?>(row, col, currentCell);
+                Changes.Add(cell);
 
                 // the current cell is less than the compare cell's value. Apply formatting
                 _styler.ApplyCellFill(row, col, Color.Green);
@@ -210,7 +217,8 @@ namespace MedicorDataFormatter.Excel
                 if (prevCellDateTime < currentCellDateTime) return;
 
                 _logger.LogInformation("12HR Convert. ROW: " + row + " COL: " + col);
-                Changes.Add(CreateCellObj(row, col, currentCellDateTime));
+                Cell<DateTime?> cell = new Cell<DateTime?>(row, col, currentCellDateTime);
+                Changes.Add(cell);
 
                 InsertValueIntoCell(row, col, currentCellDateTime);
                 _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
@@ -227,7 +235,8 @@ namespace MedicorDataFormatter.Excel
                 if (currentCellDateTime > nextCellDateTime) return; // can't possibly be correct. Don't edit on the sheet
 
                 _logger.LogInformation("12HR Convert. ROW: " + row + " COL: " + col);
-                Changes.Add(CreateCellObj(row, col, currentCellDateTime));
+                Cell<DateTime?> cell = new Cell<DateTime?>(row, col, currentCellDateTime);
+                Changes.Add(cell);
 
                 InsertValueIntoCell(row, col, currentCellDateTime);
                 _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
@@ -255,7 +264,8 @@ namespace MedicorDataFormatter.Excel
                     if (currentCellDateTime >= prevCellDateTime && currentCellDateTime <= nextCellDateTime)
                     {
                         _logger.LogInformation("12HR Convert. ROW: " + row + " COL: " + col);
-                        Changes.Add(CreateCellObj(row, col, currentCellDateTime));
+                        Cell<DateTime?> cell = new Cell<DateTime?>(row, col, currentCellDateTime);
+                        Changes.Add(cell);
 
                         InsertValueIntoCell(row, col, currentCellDateTime);
                         _styler.ApplyBorderToCell(row, col, ExcelBorderStyle.Thick, Color.Red);
@@ -302,17 +312,6 @@ namespace MedicorDataFormatter.Excel
         /// <param name="value">Value to insert</param>
         private void InsertValueIntoCell(int row, int col, object value)
             => _worksheet.Cells[row, col].Value = value;
-
-        private Cell<DateTime?> CreateCellObj(int row, int col, DateTime? dateTime = null)
-        {
-            return new Cell<DateTime?>
-            {
-                Row = row,
-                Column = col,
-                Value = dateTime
-            };
-        }
-
         #endregion
     }
 }

@@ -11,11 +11,11 @@ namespace MedicorDataFormatter.Interfaces
         /// <summary>
         /// Worksheet to use
         /// </summary>
-        ExcelWorksheet Worksheet { get; set; }
+        ExcelWorksheet Worksheet { get; }
 
         /// <summary>
         /// The package the worksheet exists in
         /// </summary>
-        ExcelPackage Package { get; set; }
+        ExcelPackage Package { get; }
     }
 }

@@ -12,9 +12,14 @@ namespace MedicorDataFormatter.Excel
     public class ExcelData : IExcelData
     {
         #region Properties
-        public ExcelWorksheet Worksheet { get; set; }
-
-        public ExcelPackage Package { get; set; }
+        /// <summary>
+        /// The excel workbook to open
+        /// </summary>
+        public ExcelPackage Package { get; }
+        /// <summary>
+        /// The worksheet to access
+        /// </summary>
+        public ExcelWorksheet Worksheet { get; }
         #endregion
 
         #region Constructors

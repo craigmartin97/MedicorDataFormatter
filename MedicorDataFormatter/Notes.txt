@@ -1,0 +1,4 @@
+-- Improvments --
+1. Better method to validate 12hr to 24hr times. Works well for this dataset but what if times are further apart.
+2. Allow user to confirm save of file.
+3. More unit tests

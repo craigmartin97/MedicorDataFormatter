@@ -16,8 +16,8 @@ namespace MedicorDataFormatter.Tests
         [Test]
         public void SetupExcelFile_NullPath()
         {
-            string path = "";
-            string sheet = "Data";
+            const string path = "";
+            const string sheet = "Data";
             Assert.Throws<ArgumentNullException>(() => new ExcelData(path, sheet));
         }
 
@@ -28,8 +28,8 @@ namespace MedicorDataFormatter.Tests
         [Test]
         public void SetupExcelFile_NullSheet()
         {
-            string path = "test";
-            string sheet = "";
+            const string path = "test";
+            const string sheet = "";
             Assert.Throws<ArgumentNullException>(() => new ExcelData(path, sheet));
         }
 
@@ -40,8 +40,8 @@ namespace MedicorDataFormatter.Tests
         [Test]
         public void SetupExcelFile_InvalidFileAddress()
         {
-            string path = "IAmAnInvalidAddrss";
-            string sheet = "Data";
+            const string path = "IAmAnInvalidAddrss";
+            const string sheet = "Data";
             Assert.Throws<FileNotFoundException>(() => new ExcelData(path, sheet));
         }
 
@@ -71,7 +71,7 @@ namespace MedicorDataFormatter.Tests
 
             try
             {
-                string sheet = "Data";
+                const string sheet = "Data";
 
                 package = new ExcelPackage(new FileInfo(path));
                 package.Workbook.Worksheets.Add(sheet);
